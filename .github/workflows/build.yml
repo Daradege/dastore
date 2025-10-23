@@ -38,8 +38,15 @@ jobs:
       - name: Download AppImage tools
         run: |
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-x86_64.AppImage
-          chmod +x linuxdeploy*.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          
+          # Try alternative plugin sources or skip if not available
+          wget https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-x86_64.AppImage || \
+          wget https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk.AppImage || \
+          echo "GTK plugin not found, will build without it"
+          
+          # Make executable if downloaded
+          [ -f linuxdeploy-plugin-gtk*.AppImage ] && chmod +x linuxdeploy-plugin-gtk*.AppImage || true
 
       - name: Build AppImage
         run: |
@@ -73,7 +80,13 @@ jobs:
           EOF
           chmod +x AppDir/AppRun
 
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin gtk --output appimage --create-desktop-file --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/dastore.png
+          # Build AppImage with or without GTK plugin
+          if [ -f linuxdeploy-plugin-gtk*.AppImage ]; then
+            ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin gtk --output appimage --create-desktop-file --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/dastore.png
+          else
+            echo "Building without GTK plugin"
+            ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage --create-desktop-file --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/dastore.png
+          fi
 
       - name: Create install script
         run: |
