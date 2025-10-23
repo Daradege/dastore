@@ -364,7 +364,7 @@ class AuthenticationErrorDialog(Adw.MessageDialog):
         super().__init__(transient_for=parent)
         
         self.set_heading("Authentication Required")
-        self.set_body("This operation requires administrator privileges. Please ensure:\n\n1. You have sudo/polkit configured properly\n2. An authentication agent is running\n3. You're in the sudoers file\n\nYou can also install packages from terminal using:\nsudo pacman -S <package-name>\nparu -S <package-name>")
+        self.set_body("This operation requires administrator privileges. Please ensure:\n\n1. You have sudo/polkit configured properly\n2. An authentication agent is running\n3. You're in the sudoers file\n\nYou can also install packages from terminal using:\nsudo pacman -S <package-name>\nyay -S <package-name>")
         
         self.add_response("ok", "OK")
         self.set_default_response("ok")
@@ -544,7 +544,7 @@ class InstallProgressWindow(Adw.Window):
             if self.operation == "install":
                 self.update_progress(0.05, "Initializing installation...", "Resolving dependencies...")
                 if self.is_aur:
-                    cmd = ['paru', '-S', '--noconfirm', self.package.name]
+                    cmd = ['yay', '-S', '--noconfirm', self.package.name]
                 else:
                     cmd = ['pkexec', 'pacman', '-S', '--noconfirm', self.package.name]
             elif self.operation == "uninstall":
@@ -553,7 +553,7 @@ class InstallProgressWindow(Adw.Window):
             elif self.operation == "update":
                 self.update_progress(0.05, "Initializing update...", "Checking for updates...")
                 if self.is_aur:
-                    cmd = ['paru', '-S', '--noconfirm', self.package.name]
+                    cmd = ['yay', '-S', '--noconfirm', self.package.name]
                 else:
                     cmd = ['pkexec', 'pacman', '-S', '--noconfirm', self.package.name]
             elif self.operation == "system_update":
@@ -823,7 +823,7 @@ class InstallProgressWindow(Adw.Window):
             if aur_packages and not self.cancelled:
                 self.update_progress(current_progress, "Installing AUR packages...", f"Installing {len(aur_packages)} packages from AUR")
                 package_names = [p.name for p in aur_packages]
-                cmd = ['paru', '-S', '--noconfirm'] + package_names
+                cmd = ['yay', '-S', '--noconfirm'] + package_names
                 
                 self.append_output(f"\nInstalling AUR packages: {' '.join(package_names)}\n")
                 self.append_output(f"Running: {' '.join(cmd)}\n\n")
@@ -1843,7 +1843,7 @@ class MainWindow(Adw.ApplicationWindow):
             pass
         
         try:
-            result = subprocess.run(['paru', '-Ss', '--aur', query], 
+            result = subprocess.run(['yay', '-Ss', '--aur', query], 
                                   capture_output=True, text=True, timeout=10)
             packages.extend(self.parse_aur_search(result.stdout))
         except:
@@ -1970,7 +1970,7 @@ class MainWindow(Adw.ApplicationWindow):
         
         try:
             if is_aur:
-                result = subprocess.run(['paru', '-Si', package.name], 
+                result = subprocess.run(['yay', '-Si', package.name], 
                                       capture_output=True, text=True, timeout=10)
             else:
                 result = subprocess.run(['pacman', '-Si', package.name], 
