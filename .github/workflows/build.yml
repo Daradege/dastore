@@ -17,7 +17,7 @@ jobs:
           version=$(cat version)
           echo "version=$version" >> $GITHUB_OUTPUT
 
-  build-arch-package:
+  build-appimage:
     needs: get-version
     runs-on: ubuntu-latest
     container: 
@@ -36,98 +36,28 @@ jobs:
             python-gobject \
             gtk3 \
             python-cairo \
-            git
+            wget \
+            fuse \
+            python-venv
 
-      - name: Create non-root user for makepkg
+      - name: Setup virtual environment and build
         run: |
-          useradd -m builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-      - name: Build package as non-root user
-        run: |
-          sudo -u builder bash << EOF
-          cd /tmp
-          
-          # Create package directory structure
-          mkdir -p dtbox/pkg
-          mkdir -p dtbox/src
-          cd dtbox
-          
-          # Create PKGBUILD
-          cat > PKGBUILD << 'PKGEOF'
-          # Maintainer: Your Name <your@email.com>
-          pkgname=dtbox
-          pkgver=${{ needs.get-version.outputs.version }}
-          pkgrel=1
-          pkgdesc="DTBox Application"
-          arch=('x86_64')
-          url="https://github.com/yourusername/yourrepo"
-          license=('MIT')
-          depends=('python' 'gtk3' 'python-gobject' 'python-cairo')
-          makedepends=('python-pip')
-          source=("https://github.com/yourusername/yourrepo/releases/download/v\$pkgver/DTBox-linux")
-          sha256sums=('SKIP')
-
-          package() {
-            install -Dm755 "\$srcdir/DTBox-linux" "\$pkgdir/usr/bin/dtbox"
-            install -Dm644 "/__w/yourrepo/yourrepo/icon.png" "\$pkgdir/usr/share/pixmaps/dtbox.png"
-            
-            # Create desktop file
-            mkdir -p "\$pkgdir/usr/share/applications"
-            cat > "\$pkgdir/usr/share/applications/dtbox.desktop" << 'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=DTBox
-          Exec=dtbox
-          Icon=dtbox
-          Categories=Utility;
-          Terminal=false
-          EOF
-          }
-          PKGEOF
-          
-          # Build the package
-          makepkg -s --noconfirm
-          EOF
-
-      - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: arch-package
-          path: /tmp/dtbox/*.pkg.tar.*
-
-  build-appimage:
-    needs: get-version
-    runs-on: ubuntu-latest
-    container: 
-      image: archlinux:latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed \
-            base-devel python python-pip python-gobject gtk3 \
-            python-cairo wget fuse
-
-      - name: Install project dependencies
-        run: pip install -r requirements.txt pyinstaller
-
-      - name: Build binary with PyInstaller
-        run: pyinstaller --onefile main.py -n DTBox
+          python -m venv /tmp/venv
+          source /tmp/venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+          pyinstaller --onefile main.py -n DTBox
 
       - name: Build AppImage
         run: |
-          wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           
           mkdir -p AppDir/usr/bin
           cp dist/DTBox AppDir/usr/bin/
-          cp icon.png AppDir/
+          test -f icon.png && cp icon.png AppDir/ || echo "No icon.png found, continuing..."
           
-          cat > AppDir/DTBox.desktop << EOF
+          cat > AppDir/DTBox.desktop << 'EOF'
           [Desktop Entry]
           Type=Application
           Name=DTBox
@@ -139,26 +69,22 @@ jobs:
           
           ./appimagetool-x86_64.AppImage AppDir
 
-      - name: Upload AppImage
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: appimage
-          path: DTBox-x86_64.AppImage
+          name: linux-artifacts
+          path: |
+            dist/DTBox
+            DTBox-x86_64.AppImage
 
   create-release:
-    needs: [get-version, build-arch-package, build-appimage]
+    needs: [get-version, build-appimage]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: arch-package
-          path: ./pkg
-          pattern: '*.pkg.tar.*'
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: appimage
-          path: ./
+          name: linux-artifacts
+          path: ./artifacts
 
       - id: create_release
         uses: softprops/action-gh-release@v1
@@ -168,13 +94,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Arch Package
+      - name: Upload Linux binary
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./pkg/*.pkg.tar.*
-          asset_name: dtbox-${{ needs.get-version.outputs.version }}-1-x86_64.pkg.tar.zst
-          asset_content_type: application/zstd
+          asset_path: ./artifacts/dist/DTBox
+          asset_name: DTBox-linux
+          asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -182,7 +108,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./DTBox-x86_64.AppImage
+          asset_path: ./artifacts/DTBox-x86_64.AppImage
           asset_name: DTBox-x86_64.AppImage
           asset_content_type: application/x-executable
         env:
