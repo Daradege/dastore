@@ -18,11 +18,22 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed base-devel git curl wget python python-pip gtk4 libadwaita python-gobject
+
+      - name: Install paru as non-root user
+        run: |
+          # Create a non-root user for building AUR packages
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           
+          # Install paru as the builder user
+          sudo -u builder bash << EOF
+          cd /tmp
           git clone https://aur.archlinux.org/paru.git
           cd paru
           makepkg -si --noconfirm
-          cd .. && rm -rf paru
+          cd ..
+          rm -rf paru
+          EOF
 
       - name: Download AppImage tools
         run: |
