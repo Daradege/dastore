@@ -26,9 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update system and install dependencies
+      - name: Update system
         run: |
           pacman -Syu --noconfirm
+
+      - name: Install Arch Linux dependencies
+        run: |
           pacman -S --noconfirm --needed \
             base-devel \
             python \
@@ -37,37 +40,72 @@ jobs:
             gtk3 \
             python-cairo \
             wget \
-            fuse \
-            python-venv
+            fuse
 
-      - name: Setup virtual environment and build
+      - name: Check Python version and venv availability
         run: |
-          python -m venv /tmp/venv
-          source /tmp/venv/bin/activate
+          python --version
+          python -c "import ensurepip; print('ensurepip available')"
+          python -c "import venv; print('venv module available')"
+
+      - name: Create virtual environment
+        run: |
+          python -m venv /tmp/build-venv
+
+      - name: Install Python dependencies
+        run: |
+          source /tmp/build-venv/bin/activate
           pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build binary with PyInstaller
+        run: |
+          source /tmp/build-venv/bin/activate
           pyinstaller --onefile main.py -n DTBox
 
-      - name: Build AppImage
+      - name: Download AppImage tool
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
-          
+
+      - name: Prepare AppDir structure
+        run: |
           mkdir -p AppDir/usr/bin
           cp dist/DTBox AppDir/usr/bin/
-          test -f icon.png && cp icon.png AppDir/ || echo "No icon.png found, continuing..."
           
+          # Copy icon if exists
+          if [ -f icon.png ]; then
+            cp icon.png AppDir/
+          else
+            echo "Warning: icon.png not found, creating placeholder"
+            touch AppDir/icon.png
+          fi
+          
+          # Create desktop file
           cat > AppDir/DTBox.desktop << 'EOF'
           [Desktop Entry]
+          Version=1.0
           Type=Application
           Name=DTBox
+          Comment=DTBox Application
           Exec=DTBox
           Icon=icon
           Categories=Utility;
           Terminal=false
+          StartupNotify=false
           EOF
-          
+
+      - name: Build AppImage
+        run: |
           ./appimagetool-x86_64.AppImage AppDir
+
+      - name: Verify artifacts
+        run: |
+          ls -la dist/DTBox
+          ls -la DTBox-x86_64.AppImage
+          file dist/DTBox
+          file DTBox-x86_64.AppImage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -76,40 +114,49 @@ jobs:
           path: |
             dist/DTBox
             DTBox-x86_64.AppImage
+          retention-days: 7
 
   create-release:
     needs: [get-version, build-appimage]
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: linux-artifacts
           path: ./artifacts
 
+      - name: List downloaded artifacts
+        run: |
+          find ./artifacts -type f -ls
+
       - id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.get-version.outputs.version }}
           name: Release v${{ needs.get-version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Linux binary
+      - name: Upload Linux binary to release
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./artifacts/dist/DTBox
-          asset_name: DTBox-linux
+          asset_name: DTBox-linux-${{ needs.get-version.outputs.version }}
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload AppImage
+      - name: Upload AppImage to release
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./artifacts/DTBox-x86_64.AppImage
-          asset_name: DTBox-x86_64.AppImage
+          asset_name: DTBox-${{ needs.get-version.outputs.version }}-x86_64.AppImage
           asset_content_type: application/x-executable
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
